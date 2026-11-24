@@ -31,7 +31,14 @@ extension stats, and treemap update in place — no rescan.
 
 ## Building
 
-No Xcode required — only the Command Line Tools (`xcode-select --install`).
+No Xcode project is involved. The Swift 6.2 Command Line Tools
+(`xcode-select --install`) are enough.
+
+> **macOS 27 SDK:** the Command Line Tools build fails with
+> `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`.
+> That SDK implements SwiftUI's `@State` as a macro, and its plugin ships only with
+> full Xcode. Install Xcode and select it before building:
+> `sudo xcode-select -s /Applications/Xcode.app`
 
 ```sh
 ./build.sh   # release build + assembles dist/MacDirStat.app (ad-hoc signed)
