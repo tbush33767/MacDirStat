@@ -29,38 +29,31 @@ Actions: **Reveal in Finder**, **Open**, and **Move to Trash** (confirmation
 first; uses the Finder trash, so Put Back works). After a delete the tree,
 extension stats, and treemap update in place — no rescan.
 
-## Building
+## Install
 
-No Xcode project is involved. The Swift 6.2 Command Line Tools
-(`xcode-select --install`) are enough.
+1. Download **`MacDirStat-1.0.dmg`** from the
+   [latest release](https://github.com/tbush33767/MacDirStat/releases/latest).
+2. Open the DMG and drag `MacDirStat.app` onto the `Applications` shortcut.
+3. Eject the disk image.
 
-> **macOS 27 SDK:** the Command Line Tools build fails with
-> `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`.
-> That SDK implements SwiftUI's `@State` as a macro, and its plugin ships only with
-> full Xcode. Install Xcode and select it before building:
-> `sudo xcode-select -s /Applications/Xcode.app`
+**Requirements:** Apple silicon (arm64 only) and macOS 15 or later.
 
-```sh
-./build.sh   # release build + assembles dist/MacDirStat.app (ad-hoc signed)
-./run.sh     # build + launch
-./test.sh    # run the unit test suite
-```
+### First launch
 
-`swift run MacDirStat` also works for quick iteration, but menu-bar naming and
-disk permissions are only correct when launched from the bundle.
+The app is signed with a self-signed certificate, not an Apple Developer ID,
+and it is not notarized, so Gatekeeper blocks the first launch. macOS 15
+removed the old Control-click → Open shortcut, so use one of these instead
+(only needed once):
 
-There is also a CLI harness for benchmarking the scanner:
+- **Either** clear the quarantine flag before opening it:
 
-```sh
-swift run -c release MacDirStatCLI ~/Documents
-```
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/MacDirStat.app
+  ```
 
-### Why test.sh?
-
-The CLT ships `Testing.framework`, but SwiftPM passes its directory as `-I`
-instead of `-F`, and the `_Testing_Foundation` cross-import overlay is missing
-its Swift module files. `test.sh` adds the right flags. Plain `swift test`
-works fine if you have full Xcode installed.
+- **Or** double-click the app, dismiss the "not opened" dialog, then go to
+  System Settings → Privacy & Security, scroll to Security, click
+  **Open Anyway**, and authenticate.
 
 ## Permissions (macOS TCC)
 
@@ -73,55 +66,9 @@ Settings pane before a scan (suppressible via "Don't ask again").
   permission prompt per folder.
 - **~/Library/Mail**, **Photos libraries**, Time Machine snapshots, etc.
   require **Full Disk Access** (System Settings → Privacy & Security → Full
-  Disk Access → add `dist/MacDirStat.app`).
+  Disk Access → add `/Applications/MacDirStat.app`).
 - Folders the app can't read are kept in the tree, shown dimmed with a 🔒,
   and counted in the status bar ("N unreadable").
 
-### Why signing matters for Full Disk Access
-
-`build.sh` signs the app with a **stable self-signed certificate** (created
-once in your login keychain by `Support/signing-identity.sh`), not an ad-hoc
-signature. This is deliberate: an ad-hoc signature gives TCC only a per-build
-`cdhash` to key grants against, so macOS shows Full Disk Access as "on" but
-does **not** honor it at runtime — the app re-prompts forever. The self-signed
-cert produces a stable designated requirement (`identifier "com.tyler.MacDirStat"
-and certificate leaf = …`) that depends on the cert and bundle id, so a single
-Full Disk Access grant persists across app relaunches **and** rebuilds.
-
-The app detects whether it actually has Full Disk Access (by test-reading a
-TCC-protected path) and only shows the grant prompt when it genuinely lacks
-access — so once granted, it never asks again.
-
-Gatekeeper (`spctl`) will "reject" the self-signed app; that's expected and
-irrelevant for a locally-built app you launch yourself. If the login keychain
-is ever reset, `build.sh` recreates the cert with a new hash — grant Full Disk
-Access once more after that.
-
-## Implementation notes
-
-- **Scanner** (`MacDirStatCore/ScanEngine.swift`): `getattrlistbulk(2)` —
-  batches of directory entries with attributes per syscall; ~75–200k items/s
-  on APFS. Symlinks are never followed; hard links are counted once (tracked
-  by file ID); volume boundaries are not crossed. Runs on a dedicated thread
-  with a 16 MB stack (recursion depth = filesystem depth).
-- **Treemap** (`TreemapLayout.swift`, `CushionRenderer.swift`): squarified
-  layout per directory with a 3 px cutoff, then per-pixel parabolic cushion
-  shading into an RGBA buffer off the main thread (WinDirStat's parameters:
-  h = 0.75, f = 0.75). Selection and extension highlights are separate
-  `CAShapeLayer`s, so selecting never re-renders the bitmap.
-- **Directory tree**: `NSOutlineView` wrapped in `NSViewRepresentable` — lazy
-  sorted-children cache, custom percent-bar cell, programmatic
-  expand-and-reveal for treemap→tree cross-linking.
-- Sizes shown are **on-disk** (allocated) sizes, so APFS compression and
-  sparse files are reflected honestly; logical sizes are also tracked.
-- Zero third-party dependencies.
-
-## Layout
-
-```
-Sources/MacDirStatCore/   scan engine, treemap math, palette (no AppKit)
-Sources/MacDirStat/       SwiftUI app, AppKit-backed panes
-Sources/MacDirStatCLI/    scanner benchmark/test harness
-Tests/                    squarify invariants, cushion math, scan fixtures
-Support/                  Info.plist, icon generator
-```
+The app checks whether it actually has Full Disk Access and only prompts when
+it genuinely lacks it, so once granted it never asks again.
